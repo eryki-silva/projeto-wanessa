@@ -1,6 +1,6 @@
 import {z} from 'zod';
-import {calculate,journeySchema} from './journey';
-import type {MonthlyRequest,MonthResult,JourneyInput} from '../../shared/contracts';
+import {calculate,journeySchema} from './journey.js';
+import type {MonthlyRequest,MonthResult,JourneyInput} from '../../shared/contracts.js';
 const time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const monthlySchema=z.object({
  month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),input:journeySchema,

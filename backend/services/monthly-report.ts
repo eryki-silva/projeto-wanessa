@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
-import {monthly,personJourney} from '../domain/monthly';
-import type {MonthlyRequest} from '../../shared/contracts';
+import {monthly,personJourney} from '../domain/monthly.js';
+import type {MonthlyRequest} from '../../shared/contracts.js';
 const duration=(n:number)=>`${Math.floor(Math.round(n)/60)}:${String(Math.round(n)%60).padStart(2,'0')}`;
 export async function createMonthlyReport(p:MonthlyRequest,format:'xlsx'|'csv'){
  const result=monthly(p),book=new ExcelJS.Workbook(),schedule=book.addWorksheet('Escala mensal');

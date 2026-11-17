@@ -7,3 +7,4 @@ preview-react/
 .env
 .env.*
 !.env.example
+.runtime-check/

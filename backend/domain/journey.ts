@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import type {JourneyInput,JourneyResult,MonthResult,Person} from '../../shared/contracts';
+import type {JourneyInput,JourneyResult,MonthResult,Person} from '../../shared/contracts.js';
 const time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/,'Horário inválido.');
 export const journeySchema=z.object({start:time,breakStart:time,breakEnd:time,end:time,pattern:z.enum(['5x2','6x1','12x36']),reducedNight:z.boolean(),target:z.number().positive().max(168)}).strict();
 export function calculate(input:JourneyInput):JourneyResult {

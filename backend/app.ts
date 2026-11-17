@@ -1,8 +1,8 @@
 import express from 'express';
-import {calculate,journeySchema,monthSchema,generateMonth} from './domain/journey';
-import {createReport} from './services/reports';
-import {monthly,monthlySchema} from './domain/monthly';
-import {createMonthlyReport} from './services/monthly-report';
+import {calculate,journeySchema,monthSchema,generateMonth} from './domain/journey.js';
+import {createReport} from './services/reports.js';
+import {monthly,monthlySchema} from './domain/monthly.js';
+import {createMonthlyReport} from './services/monthly-report.js';
 const app=express();app.disable('x-powered-by');app.use(express.json({limit:'256kb'}));
 app.get('/api/health',(_req,res)=>res.json({status:'ok',version:'1.0.0'}));
 app.post('/api/journeys/calculate',(req,res,next)=>{try{res.json(calculate(journeySchema.parse(req.body)));}catch(e){next(e);}});

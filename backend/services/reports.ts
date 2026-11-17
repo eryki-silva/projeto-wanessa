@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
-import type {JourneyInput} from '../../shared/contracts';
-import {calculate} from '../domain/journey';
+import type {JourneyInput} from '../../shared/contracts.js';
+import {calculate} from '../domain/journey.js';
 const time=(n:number)=>`${Math.floor(Math.round(n)/60)}:${String(Math.round(n)%60).padStart(2,'0')}`;
 export async function createReport(input:JourneyInput,format:'xlsx'|'csv'){
  const r=calculate(input),book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Jornada semanal');
