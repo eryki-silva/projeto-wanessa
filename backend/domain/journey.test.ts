@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {calculate,generateMonth} from './journey';
+import type {JourneyInput} from '../../shared/contracts';
+const base:JourneyInput={start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:'17:24',pattern:'5x2',reducedNight:false,target:42};
+test('5x2 fecha 42 horas, com cinco trabalhos e duas folgas',()=>{const r=calculate(base);assert.equal(r.totals.calculated,2520);assert.equal(r.totals.offDays,2);assert.equal(r.totals.difference,0);});
+test('meia-noite e intervalo são descontados da redução noturna',()=>{const r=calculate({...base,start:'19:00',breakStart:'01:00',breakEnd:'02:00',end:'06:05',reducedNight:true,pattern:'12x36'});assert.equal(r.daily.real,605);assert.equal(r.daily.daytime,245);assert.ok(Math.abs(r.daily.nighttime-360*8/7)<1e-8);assert.equal(r.totals.workingDays,4);assert.equal(r.nextWeek,r.daily.calculated*3);assert.equal(r.average,r.daily.calculated*3.5);});
+test('sem redução, total equivale às horas reais',()=>{const r=calculate({...base,start:'22:00',breakStart:'02:00',breakEnd:'03:00',end:'06:00'});assert.equal(r.daily.real,r.daily.calculated);});
+test('recusa horário inválido e jornada de 24 horas',()=>{assert.throws(()=>calculate({...base,start:'99:00'}));assert.throws(()=>calculate({...base,end:'08:00'}));});
+test('mês com 30 dias e fins de semana de folga em 5x2',()=>{const r=generateMonth('2026-11','5x2',[{id:'1',name:'Ana',role:'Vendas',initials:'AN',color:'green'}]);assert.equal(r.dates.length,30);r.dates.forEach((d,i)=>assert.equal(r.rows['1'][i],d.weekday!==0&&d.weekday!==6));});

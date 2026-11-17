@@ -1,0 +1,14 @@
+import express from 'express';
+import {calculate,journeySchema,monthSchema,generateMonth} from './domain/journey';
+import {createReport} from './services/reports';
+import {monthly,monthlySchema} from './domain/monthly';
+import {createMonthlyReport} from './services/monthly-report';
+const app=express();app.disable('x-powered-by');app.use(express.json({limit:'256kb'}));
+app.get('/api/health',(_req,res)=>res.json({status:'ok',version:'1.0.0'}));
+app.post('/api/journeys/calculate',(req,res,next)=>{try{res.json(calculate(journeySchema.parse(req.body)));}catch(e){next(e);}});
+app.post('/api/schedules/generate',(req,res,next)=>{try{const p=monthSchema.parse(req.body);res.json(generateMonth(p.month,p.pattern,p.people));}catch(e){next(e);}});
+app.post('/api/schedules/monthly',(req,res,next)=>{try{res.json(monthly(monthlySchema.parse(req.body)));}catch(e){next(e);}});
+app.post('/api/reports/monthly',async(req,res,next)=>{try{const payload=monthlySchema.parse(req.body.payload),format=req.body.format;if(!['xlsx','csv'].includes(format))throw Error('Formato de relatório inválido.');const file=await createMonthlyReport(payload,format);res.type(format==='xlsx'?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'text/csv; charset=utf-8');res.setHeader('Content-Disposition',`attachment; filename="escala-${payload.month}.${format}"`);res.send(file);}catch(e){next(e);}});
+app.post('/api/reports/weekly',async(req,res,next)=>{try{const input=journeySchema.parse(req.body.input),format=req.body.format;if(!['xlsx','csv'].includes(format))throw Error('Formato de relatório inválido.');const file=await createReport(input,format);res.type(format==='xlsx'?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'text/csv; charset=utf-8');res.setHeader('Content-Disposition',`attachment; filename="jornada-semanal.${format}"`);res.send(file);}catch(e){next(e);}});
+app.use((error:Error,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{res.status(400).json({message:error.name==='ZodError'?'Confira os horários e os campos informados.':error.message});});
+export default app;

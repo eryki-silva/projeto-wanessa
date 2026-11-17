@@ -1,0 +1,13 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import {monthly} from './monthly';
+import {createMonthlyReport} from '../services/monthly-report';
+import type {MonthlyRequest} from '../../shared/contracts';
+const base:MonthlyRequest={month:'2026-11',input:{start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:'17:24',pattern:'5x2',reducedNight:false,target:42},people:[{id:'a',name:'Ana',role:'Vendas',initials:'A',color:'green',sex:'F'}],rules:{minimum:1,maxDays:6,sunday:'alternate',holidays:[15]}};
+test('mês respeita fechamentos, máximo de dias e totais semanais',()=>{const r=monthly(base);assert.equal(r.dates.length,30);assert.equal(r.rows.a[14],false);let run=0;r.rows.a.forEach(work=>{run=work?run+1:0;assert.ok(run<=6);});assert.ok(r.weeks!.every((w,i)=>i===0||new Date(2026,10,w.start).getDay()===1));const summary=r.summaries![0];assert.equal(summary.workingDays,r.rows.a.filter(Boolean).length);assert.equal(summary.calculated,summary.weekly.reduce((a,b)=>a+b,0));});
+test('edição manual recalcula horas e mantém fechamento bloqueado',()=>{const r=monthly(base),rows={a:r.rows.a.map(()=>true)},edited=monthly({...base,rows});assert.equal(edited.rows.a[14],false);assert.equal(edited.summaries![0].workingDays,29);assert.ok(edited.warnings!.some(w=>w.includes('dias seguidos')));});
+test('continuidade usa a sequência no final do mês anterior',()=>{const r=monthly({...base,previousRows:{a:Array(31).fill(true)}});assert.equal(r.rows.a[0],false);});
+test('12x36 alterna também na virada do mês',()=>{const oct=monthly({...base,month:'2026-10',input:{...base.input,pattern:'12x36'},rules:{...base.rules,holidays:[]}}),nov=monthly({...base,input:{...base.input,pattern:'12x36'},rules:{...base.rules,holidays:[]}});assert.notEqual(oct.rows.a.at(-1),nov.rows.a[0]);});
+test('recusa colaboradores duplicados e linhas incompletas',()=>{assert.throws(()=>monthly({...base,people:[base.people[0],base.people[0]]}));assert.throws(()=>monthly({...base,rows:{a:[true]}}));});
+test('relatório mensal gera Excel válido com três abas e CSV sanitizado',async()=>{const payload={...base,people:[{...base.people[0],name:'=2+2'}]},file=await createMonthlyReport(payload,'xlsx'),book=new ExcelJS.Workbook();await book.xlsx.load(file as unknown as ExcelJS.Buffer);assert.equal(book.worksheets.length,3);assert.equal(book.worksheets[0].getCell('A2').value,'=2+2');assert.notEqual(book.worksheets[0].getCell('A2').type,ExcelJS.ValueType.Formula);const csv=(await createMonthlyReport(payload,'csv')).toString();assert.ok(csv.includes("'=2+2"));});

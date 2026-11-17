@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vercel/
+.local-ca.pem
+preview-react/
+*.log
+.env
+.env.*
+!.env.example

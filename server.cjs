@@ -1,3 +1,5 @@
-const http=require('http'),fs=require('fs'),path=require('path');
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/reports.js':'reports.js','/style.css':'style.css'};
-http.createServer((req,res)=>{const file=files[req.url.split('?')[0]];if(!file){res.writeHead(404);return res.end('Not found');}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8');fs.createReadStream(path.join(__dirname,file)).pipe(res);}).listen(4173,'127.0.0.1',()=>console.log('Compasso: http://127.0.0.1:4173'));
+const {spawn}=require('node:child_process');
+const path=require('node:path');
+const child=spawn(process.execPath,[path.join(__dirname,'node_modules/tsx/dist/cli.mjs'),path.join(__dirname,'scripts/serve.ts')],{stdio:'inherit',windowsHide:true});
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));
+child.on('exit',code=>process.exit(code??0));
