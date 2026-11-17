@@ -38,6 +38,7 @@ Arquivos inválidos não substituem os dados atuais. Se o armazenamento estiver 
 ## Funcionalidades
 
 - Jornada semanal 5×2, 6×1 e alternância 12×36, com as quatro batidas e avanço por Enter.
+- Seleção de trabalho ou folga em cada dia da jornada semanal, com avisos quando a quantidade não corresponde ao padrão escolhido. A seleção é salva no navegador e nos backups e aparece nos relatórios.
 - Horas diurnas, noturnas reais ou reduzidas, totais e comparação com a meta.
 - Filiais, setores, colaboradores e horários/limites individuais.
 - Escala mensal com fechamentos, folgas proporcionais em semanas parciais, domingos alternados e continuidade do mês anterior quando salvo.

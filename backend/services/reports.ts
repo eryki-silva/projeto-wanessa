@@ -7,6 +7,7 @@ export async function createReport(input:JourneyInput,format:'xlsx'|'csv'){
  sheet.addRow(['Dia','Entrada','Intervalo','Retorno','Saída','Diurnas','Noturnas','Total']);
  r.days.forEach(d=>sheet.addRow([d.label,...(d.working?[input.start,input.breakStart,input.breakEnd,input.end]:['Folga','Folga','Folga','Folga']),time(d.daytime),time(d.nighttime),time(d.calculated)]));
  sheet.addRow(['Total da semana','','','','',time(r.totals.daytime),time(r.totals.nighttime),time(r.totals.calculated)]);
+ r.warnings.forEach(w=>sheet.addRow(['Conferência',w]));
  sheet.columns.forEach((c,i)=>c.width=i===0?24:18);sheet.views=[{state:'frozen',ySplit:1}];
  for(const index of [1,9]){sheet.getRow(index).font={bold:true,color:{argb:'FFFFFFFF'}};sheet.getRow(index).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF24594D'}};}
  sheet.eachRow(row=>row.eachCell((cell,column)=>{if(column===7&&row.number!==1&&row.number!==9)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE8E9ED'}};}));
