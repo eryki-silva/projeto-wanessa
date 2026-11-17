@@ -1,0 +1,3 @@
+const http=require('http'),fs=require('fs'),path=require('path');
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/reports.js':'reports.js','/style.css':'style.css'};
+http.createServer((req,res)=>{const file=files[req.url.split('?')[0]];if(!file){res.writeHead(404);return res.end('Not found');}res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8');fs.createReadStream(path.join(__dirname,file)).pipe(res);}).listen(4173,'127.0.0.1',()=>console.log('Compasso: http://127.0.0.1:4173'));
