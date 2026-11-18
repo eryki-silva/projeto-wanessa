@@ -1,12 +1,13 @@
 import {z} from 'zod';
 import type {JourneyInput,Person,MonthRules} from '../../shared/contracts';
+import {plannerRequestSchema} from '../../shared/planner';
 export const defaultJourney:JourneyInput={start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:'17:24',pattern:'5x2',reducedNight:false,target:42};
 export const defaultRules:MonthRules={minimum:1,maxDays:6,sunday:'alternate',holidays:[]};
 const time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),identifier=z.string().min(1).max(120);
 const person=z.object({id:identifier,name:z.string().min(1).max(120),role:z.string().max(120),initials:z.string().max(6),color:z.string().max(20),sex:z.enum(['F','M']).optional(),start:time.optional(),breakStart:time.optional(),breakEnd:time.optional(),end:time.optional(),off:z.number().int().min(1).max(6).optional(),limit:z.number().positive().max(168).optional()});
 const rules=z.object({minimum:z.number().int().min(0).max(100),maxDays:z.number().int().min(1).max(31),sunday:z.enum(['alternate','none']),holidays:z.array(z.number().int().min(1).max(31))});
-const journey=z.object({start:time,breakStart:time,breakEnd:time,end:time,pattern:z.enum(['5x2','6x1','12x36']),reducedNight:z.boolean(),target:z.number().positive().max(168),workingDays:z.array(z.boolean()).length(7).optional()});
-const sectorSchema=z.object({id:identifier,name:z.string().min(1).max(120),people:z.array(person).max(100),rules,plans:z.record(z.record(z.array(z.boolean()).max(31)))});
+const journey=z.object({start:time,breakStart:time,breakEnd:time,end:time,dailyTimes:z.array(z.object({start:time,breakStart:time,breakEnd:time,end:time})).length(7).optional(),pattern:z.enum(['5x2','6x1','12x36']),reducedNight:z.boolean(),target:z.number().positive().max(168),workingDays:z.array(z.boolean()).length(7).optional()});
+const sectorSchema=z.object({id:identifier,name:z.string().min(1).max(120),people:z.array(person).max(100),rules,plans:z.record(z.record(z.array(z.boolean()).max(31))),planner:plannerRequestSchema.optional()});
 export const workspaceSchema=z.object({version:z.literal(2),journey,branches:z.array(z.object({id:identifier,name:z.string().min(1).max(120),sectors:z.array(sectorSchema).min(1)})).min(1),branch:identifier,sector:identifier}).superRefine((value,ctx)=>{const b=value.branches.find(b=>b.id===value.branch);if(!b?.sectors.some(s=>s.id===value.sector))ctx.addIssue({code:'custom',message:'Filial ou setor inválido.'});if(new Set(value.branches.map(b=>b.id)).size!==value.branches.length)ctx.addIssue({code:'custom',message:'Filiais duplicadas.'});for(const b of value.branches){if(new Set(b.sectors.map(s=>s.id)).size!==b.sectors.length)ctx.addIssue({code:'custom',message:'Setores duplicados.'});for(const s of b.sectors)if(new Set(s.people.map(p=>p.id)).size!==s.people.length)ctx.addIssue({code:'custom',message:'Colaboradores duplicados.'});}});
 export type Workspace=z.infer<typeof workspaceSchema>;
 export type Sector=Workspace['branches'][number]['sectors'][number];

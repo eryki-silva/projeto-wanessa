@@ -5,6 +5,18 @@ import {createReport} from '../services/reports';
 import {calculate,generateMonth} from './journey';
 import type {JourneyInput} from '../../shared/contracts';
 const base:JourneyInput={start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:'17:24',pattern:'5x2',reducedNight:false,target:42};
+test('horários por dia somam batidas diferentes e aparecem nos relatórios',async()=>{
+ const dailyTimes=Array.from({length:7},()=>({start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:'17:00'}));
+ dailyTimes[4]={start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:'16:00'};
+ const input={...base,dailyTimes},r=calculate(input);assert.equal(r.totals.calculated,39*60);assert.equal(r.days[4].calculated,7*60);
+ const csv=(await createReport(input,'csv')).toString('utf8');assert.match(csv,/Sexta.*16:00/);
+ const book=new ExcelJS.Workbook();await book.xlsx.load(await createReport(input,'xlsx') as unknown as ExcelJS.Buffer);
+ assert.equal((book.worksheets[0].getCell('E6').value as Date).getUTCHours(),16);
+});
+test('12x36 usa horários dos dias trabalhados na semana seguinte',()=>{
+ const dailyTimes=Array.from({length:7},(_,i)=>({start:'08:00',breakStart:'12:00',breakEnd:'13:00',end:i%2?'15:00':'17:00'}));
+ const r=calculate({...base,pattern:'12x36',dailyTimes});assert.equal(r.totals.calculated,32*60);assert.equal(r.nextWeek,18*60);assert.equal(r.average,25*60);
+});
 test('5x2 fecha 42 horas, com cinco trabalhos e duas folgas',()=>{const r=calculate(base);assert.equal(r.totals.calculated,2520);assert.equal(r.totals.offDays,2);assert.equal(r.totals.difference,0);});
 test('meia-noite e intervalo são descontados da redução noturna',()=>{const r=calculate({...base,start:'19:00',breakStart:'01:00',breakEnd:'02:00',end:'06:05',reducedNight:true,pattern:'12x36'});assert.equal(r.daily.real,605);assert.equal(r.daily.daytime,245);assert.ok(Math.abs(r.daily.nighttime-360*8/7)<1e-8);assert.equal(r.totals.workingDays,4);assert.equal(r.nextWeek,r.daily.calculated*3);assert.equal(r.average,r.daily.calculated*3.5);});
 test('sem redução, total equivale às horas reais',()=>{const r=calculate({...base,start:'22:00',breakStart:'02:00',breakEnd:'03:00',end:'06:00'});assert.equal(r.daily.real,r.daily.calculated);});

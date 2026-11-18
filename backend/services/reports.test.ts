@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import {createReport} from './reports';
 import {calculate} from '../domain/journey';
 import type {JourneyInput} from '../../shared/contracts';
+import {twelveByThirtySixNote} from '../../shared/journey-notes';
 
 const input:JourneyInput={start:'19:00',breakStart:'01:00',breakEnd:'02:00',end:'06:05',pattern:'5x2',reducedNight:true,target:42,workingDays:[false,true,true,false,true,true,true]};
 // ExcelJS exposes cells with time formats as Date objects when reading a file.
@@ -52,4 +53,14 @@ test('CSV mantém horários legíveis e totais estáticos, sem inserir fórmulas
  assert.ok(csv.includes('"19:00";"01:00";"02:00";"06:05"'));
  assert.ok(csv.includes('"Folga";"Folga";"Folga";"Folga"'));
  assert.ok(!csv.includes('SUM('));
+});
+
+test('observação do ciclo 12x36 aparece no Excel e no CSV sem alterar os totais',async()=>{
+ const data={...input,pattern:'12x36' as const,workingDays:undefined};
+ const book=new ExcelJS.Workbook();await book.xlsx.load(await createReport(data,'xlsx') as unknown as ExcelJS.Buffer);
+ assert.equal(book.worksheets[0].getCell('A18').value,twelveByThirtySixNote);
+ assert.equal(book.worksheets[0].getCell('H9').formula,'SUM(H2:H8)');
+ assert.ok(Math.abs(serial(book.worksheets[0].getCell('H9').result)-calculate(data).totals.calculated/1440)<1e-8);
+ assert.ok((await createReport(data,'csv')).toString().includes(twelveByThirtySixNote));
+ assert.ok(!(await createReport(input,'csv')).toString().includes(twelveByThirtySixNote));
 });

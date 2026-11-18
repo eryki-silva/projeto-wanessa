@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 4180 --strictPort",
     "api": "tsx watch backend/server.ts",
     "build": "tsc --noEmit && vite build",
-    "test": "tsx --test backend/domain/journey.test.ts backend/domain/monthly.test.ts backend/services/reports.test.ts frontend/lib/workspace.test.ts",
+    "test": "tsx --test backend/domain/journey.test.ts backend/domain/monthly.test.ts backend/domain/planner.test.ts backend/services/reports.test.ts frontend/lib/workspace.test.ts",
     "start": "tsx scripts/serve.ts"
   },
   "dependencies": {

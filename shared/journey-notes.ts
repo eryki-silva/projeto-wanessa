@@ -1,0 +1,1 @@
+export const twelveByThirtySixNote = 'Escala 12×36: semanas com três e quatro plantões têm totais diferentes. O total exibido corresponde apenas aos dias desta semana; a média do ciclo deve ser considerada separadamente. A comparação com a meta configurada não representa validação legal da escala.';
