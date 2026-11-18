@@ -51,7 +51,8 @@ test('Excel semanal usa os dias personalizados em vez do fim de semana fixo',asy
  const sheet=book.worksheets[0];
  assert.equal(sheet.getCell('B2').value,'Folga');
  assert.equal(sheet.getCell('B5').value,'Folga');
- assert.equal(sheet.getCell('B7').value,'08:00');
- assert.equal(sheet.getCell('B8').value,'08:00');
- assert.equal(sheet.getCell('H9').value,'42:00');
+ assert.equal((sheet.getCell('B7').value as Date).getUTCHours(),8);
+ assert.equal((sheet.getCell('B8').value as Date).getUTCHours(),8);
+ assert.equal(sheet.getCell('H9').formula,'SUM(H2:H8)');
+ assert.equal(((sheet.getCell('H9').result as unknown as Date).getTime()-Date.UTC(1899,11,30))/86400000,42/24);
 });

@@ -44,6 +44,7 @@ Arquivos inválidos não substituem os dados atuais. Se o armazenamento estiver 
 - Escala mensal com fechamentos, folgas proporcionais em semanas parciais, domingos alternados e continuidade do mês anterior quando salvo.
 - Ajustes manuais de trabalho/folga, alertas de cobertura diária, horas semanais e descanso entre jornadas.
 - Excel XLSX e CSV separados por relatório; impressão da jornada semanal ou escala mensal.
+- No Excel semanal, as batidas são horários numéricos e as horas diurnas, noturnas e os totais usam fórmulas editáveis. O formato de duração preserva totais acima de 24 horas. O CSV continua exportando valores estáticos.
 
 O gerador é heurístico. Os alertas precisam de conferência; cobertura por faixa de horário não é validada. 12×36 alterna dias e não valida a duração contratual nem garante 36 horas exatas de descanso para qualquer horário digitado. A redução noturna cobre apenas 22h–5h, desconta intervalos e não se estende após as 5h. Os cálculos são de tempo, não de adicional salarial.
 
