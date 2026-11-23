@@ -27,10 +27,13 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
   const weeks = new Map<string,number[]>();
   dates.forEach((d,i)=>{const key=iso(monday(date(d.iso)));weeks.set(key,[...(weeks.get(key)??[]),i]);});
   const daily=Object.fromEntries(c.teams.map(t=>[t.id,plannerTeamHours(t)]));
+  const teamsByIdPlaceholder=(id:string)=>c.teams.find(t=>t.id===id)!;
+  const flexible=c.teams.some(t=>(t.coverTeamIds??[]).length>0);
   const membersByTeam=Object.fromEntries(c.teams.map(t=>[t.id,c.members.filter(p=>p.teamId===t.id)]));
   if(c.members.length!==c.expectedPeople)add('error',`O quadro configurado é de ${c.expectedPeople} pessoas, mas há ${c.members.length} cadastradas. O quadro não será aumentado automaticamente.`);
   if(!c.members.length)add('error','Cadastre pelo menos uma pessoa para gerar a escala.');
   if(c.members.some(p=>!p.previousDays.length))add('warning','Histórico anterior não informado para parte da equipe. As sequências estão verificadas dentro do período; informe os dias anteriores para conferir a continuidade na entrada.');
+  if(flexible&&c.members.some(p=>p.previousDays.at(-1)))add('warning','Para quem trabalhou no dia anterior ao período, o descanso inicial usa o horário da turma de origem; confira se houve cobertura em outro horário.');
   add('warning','A cobertura por turma conta pessoas escaladas. A presença simultânea durante os intervalos não é validada por faixa de horário.');
 
   const rows:Record<string,boolean[]>={};
@@ -78,7 +81,7 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
     const minimums:Record<string,number>={},maximums:Record<string,number>={};
     c.teams.forEach(t=>{
       const members=membersByTeam[t.id],fixedWork=members.filter(p=>fixedOn.has(p.id)).length,fixedRest=members.filter(p=>fixedOff.has(p.id)).length;
-      const [min,max]=c.teamCoverage==='required'?bounds(members.length,t.minimum,t.name):[0,members.length];
+      const [min,max]=c.teamCoverage==='required'&&!flexible?bounds(members.length,t.minimum,t.name):[0,members.length];
       minimums[t.id]=Math.max(fixedWork,min);
       maximums[t.id]=Math.min(members.length-fixedRest,max);
       if(minimums[t.id]>maximums[t.id])add('error',`${t.name}: as coberturas diárias, junto dos grupos fixados, não cabem na quantidade de pessoas da turma.`);
@@ -123,7 +126,7 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
       for(let day=0;day<7;day++) {
         const present=c.members.filter(p=>modelWorks(result[p.id],day));
         cost+=Math.max(0,c.minimum[day]-present.length)*10000+Math.abs(c.desired[day]-present.length)*10;
-        for(const t of c.teams){const count=present.filter(p=>p.teamId===t.id).length;cost+=Math.max(0,t.minimum[day]-count)*(c.teamCoverage==='required'?10000:20);}
+        for(const t of c.teams){const count=present.filter(p=>p.teamId===t.id || (teamsByIdPlaceholder(p.teamId).coverTeamIds??[]).includes(t.id)).length;cost+=Math.max(0,t.minimum[day]-count)*(c.teamCoverage==='required'?10000:20);}
       }
       if(!initial) for(const p of c.members) if(p.rotates && result[p.id]===previous[p.id])cost+=1;
       if(c.balanceSaturdays) for(const p of c.members) if(modelWorks(result[p.id],5))cost+=(saturdayCounts[p.id]??0)*0.1;
@@ -158,7 +161,7 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
         const distinct=new Set(c.members.map(p=>weekPairs[p.id].join(','))).size;
         cost+=Math.max(0,distinct-c.automaticGroups)*1000000;
         for(const i of indexes){const d=dates[i],present=c.members.filter(p=>!weekPairs[p.id].includes(d.weekday));cost+=Math.max(0,c.minimum[d.weekday]-present.length)*10000+Math.abs(c.desired[d.weekday]-present.length)*10;
-          for(const t of c.teams){const n=present.filter(p=>p.teamId===t.id).length;cost+=Math.max(0,t.minimum[d.weekday]-n)*(c.teamCoverage==='required'?10000:20);}}
+          for(const t of c.teams){const n=present.filter(p=>p.teamId===t.id || (teamsByIdPlaceholder(p.teamId).coverTeamIds??[]).includes(t.id)).length;cost+=Math.max(0,t.minimum[d.weekday]-n)*(c.teamCoverage==='required'?10000:20);}}
         for(const p of c.members){
           let run=0; const history=[...p.previousDays,...rows[p.id].slice(0,indexes[0])];for(let j=history.length-1;j>=0&&history[j];j--)run++;
           for(const i of indexes){run=weekPairs[p.id].includes(dates[i].weekday)?0:run+1;if(run>c.maxConsecutive)cost+=20000;}
@@ -217,8 +220,41 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
 
   }
 
+  // Assign each working day to one actual shift. Cover staff may fill a deficit
+  // in the selected teams, while each person is counted only once per day.
+  const shifts:Record<string,(string|null)[]>=Object.fromEntries(c.members.map(p=>[p.id,dates.map(()=>null)]));
+  const teamsById=Object.fromEntries(c.teams.map(t=>[t.id,t]));
+  const minutes=(time:string)=>Number(time.slice(0,2))*60+Number(time.slice(3));
+  function restBetween(before:PlannerConfig['teams'][number],after:PlannerConfig['teams'][number]){
+    const start=minutes(before.start),end=minutes(before.end);
+    return 1440+minutes(after.start)-(end+(end<=start?1440:0));
+  }
+  for(const [i,d] of dates.entries()){
+    const present=c.members.filter(p=>rows[p.id][i]);
+    const allowed=(p:PlannerConfig['members'][number])=>{
+      const home=teamsById[p.teamId];const choices=[p.teamId,...(home.coverTeamIds??[])];
+      const previous=i>0?shifts[p.id][i-1]:null;
+      return previous?choices.filter(id=>restBetween(teamsById[previous],teamsById[id])>=660):choices;
+    };
+    const assigned:Record<string,string>={};
+    for(const p of present)if(!(teamsById[p.teamId].coverTeamIds??[]).length)assigned[p.id]=p.teamId;
+    const slots:string[]=[];
+    for(const team of c.teams){const count=Object.values(assigned).filter(id=>id===team.id).length;for(let j=count;j<team.minimum[d.weekday];j++)slots.push(team.id);}
+    const owners:Record<number,string>={};
+    function allocate(person:PlannerConfig['members'][number],seen:Set<number>):boolean{
+      for(let slot=0;slot<slots.length;slot++){
+        if(seen.has(slot)||!allowed(person).includes(slots[slot]))continue;seen.add(slot);
+        const current=owners[slot];if(!current||allocate(c.members.find(p=>p.id===current)!,seen)){owners[slot]=person.id;return true;}
+      }return false;
+    }
+    const substitutes=present.filter(p=>(teamsById[p.teamId].coverTeamIds??[]).length).sort((a,b)=>allowed(a).length-allowed(b).length);
+    for(const p of substitutes)allocate(p,new Set());
+    for(const [slot,id] of Object.entries(owners))assigned[id]=slots[Number(slot)];
+    for(const p of present)shifts[p.id][i]=assigned[p.id]??allowed(p)[0]??p.teamId;
+  }
+
   const coverage=dates.map((d,i)=>{
-    const present=c.members.filter(p=>rows[p.id][i]),teams=Object.fromEntries(c.teams.map(t=>[t.id,present.filter(p=>p.teamId===t.id).length]));
+    const present=c.members.filter(p=>rows[p.id][i]),teams=Object.fromEntries(c.teams.map(t=>[t.id,present.filter(p=>shifts[p.id][i]===t.id).length]));
     let valid=present.length>=c.minimum[d.weekday];
     if(!valid)add('error',`${d.iso}: ${present.length} pessoas previstas; mínimo de ${c.minimum[d.weekday]}.`);
     if(fixedRest(d.weekday)&&present.length){valid=false;add('error',`${d.iso}: há trabalho em ${plannerWeekdays[d.weekday]}, folga em todas as combinações permitidas.`);}
@@ -234,9 +270,9 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
     row.forEach(work=>{run=work?run+1:0;maximum=Math.max(maximum,run);});
     if(maximum>c.maxConsecutive)personIssues.push(`Sequência de ${maximum} dias; máximo de ${c.maxConsecutive}.`);
     if(row.some((work,i)=>work&&fixedRest(dates[i].weekday)))personIssues.push('Trabalho em dia de folga em todas as combinações permitidas.');
-    const hours=daily[person.teamId].calculated;
+    const dayHours=row.map((work,i)=>work?daily[shifts[person.id][i]??person.teamId].calculated:0);
     const weekly=[...weeks.values()].map(indexes=>{
-      const days=indexes.filter(i=>row[i]).length,partial=indexes.length<7,total=days*hours;
+      const days=indexes.filter(i=>row[i]).length,partial=indexes.length<7,total=indexes.reduce((sum,i)=>sum+dayHours[i],0);
       if(!partial&&days!==5)personIssues.push(`Semana de ${dates[indexes[0]].iso}: ${days} dias de trabalho; esperado 5.`);
       if(total>c.targetHours*60+.01)personIssues.push(`Semana de ${dates[indexes[0]].iso}: horas calculadas acima da meta configurada.`);
       return{start:dates[indexes[0]].iso,end:dates[indexes.at(-1)!].iso,days,hours:total,partial};
@@ -251,19 +287,19 @@ export function planPeriod(raw:PlannerDraft):PlannerResult {
       if(c.sundayRule==='all'&&row.some((work,i)=>work&&dates[i].weekday===6))personIssues.push('Trabalho em domingo, mas todos os domingos devem ser de folga.');
       if(c.sundayRule==='minimum')for(const month of new Set(dates.map(d=>d.iso.slice(0,7)))){const end=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10);if(c.start<=month+'-01'&&c.end>=end){const count=dates.filter((d,i)=>d.iso.startsWith(month)&&d.weekday===6&&!row[i]).length;if(count<c.minimumSundays)personIssues.push(`${month}: ${count} domingos de folga; mínimo de ${c.minimumSundays}.`);}}
     }
-    const team=c.teams.find(t=>t.id===person.teamId)!;
-    const shiftStart=Number(team.start.slice(0,2))*60+Number(team.start.slice(3));
-    const shiftEnd=Number(team.end.slice(0,2))*60+Number(team.end.slice(3));
-    const rest=1440+shiftStart-(shiftEnd+(shiftEnd<=shiftStart?1440:0));
-    if(rest<660&&row.some((v,i)=>v&&(i?row[i-1]:person.previousDays.at(-1))))personIssues.push('Há intervalo entre jornadas inferior a 11 horas.');
+    for(let i=0;i<row.length;i++)if(row[i]&&(i?row[i-1]:person.previousDays.at(-1))){
+      const current=teamsById[shifts[person.id][i]??person.teamId];
+      const previous=teamsById[i?(shifts[person.id][i-1]??person.teamId):person.teamId];
+      if(restBetween(previous,current)<660)personIssues.push(`${dates[i].iso}: intervalo entre jornadas inferior a 11 horas.`);
+    }
     personIssues.forEach(message=>add('error',`${person.name}: ${message}`));
     const worked=row.filter(Boolean).length;
-    return{id:person.id,name:person.name,teamId:person.teamId,before:assignmentHistory[0]?.[person.id]??modelName(c.allowedModels[0]),after:assignmentHistory.at(-1)?.[person.id]??modelName(c.allowedModels[0]),maximum,workingDays:worked,hours:worked*hours,saturdays:row.filter((v,i)=>v&&dates[i].weekday===5).length,mondays:row.filter((v,i)=>v&&dates[i].weekday===0).length,weekly,issues:personIssues,result:personIssues.length?'ERRO' as const:'OK' as const};
+    return{id:person.id,name:person.name,teamId:person.teamId,before:assignmentHistory[0]?.[person.id]??modelName(c.allowedModels[0]),after:assignmentHistory.at(-1)?.[person.id]??modelName(c.allowedModels[0]),maximum,workingDays:worked,hours:dayHours.reduce((a,b)=>a+b,0),saturdays:row.filter((v,i)=>v&&dates[i].weekday===5).length,mondays:row.filter((v,i)=>v&&dates[i].weekday===0).length,weekly,issues:personIssues,result:personIssues.length?'ERRO' as const:'OK' as const};
   });
   const counts=validation.map(p=>p.saturdays),minSat=counts.length?Math.min(...counts):0,maxSat=counts.length?Math.max(...counts):0;
   if(c.balanceSaturdays&&maxSat-minSat>1)add('warning',`Sábados distribuídos entre ${minSat} e ${maxSat} por pessoa. O início do rodízio e os mínimos por turma limitam o equilíbrio; antecipe as trocas para aproximar as quantidades.`);
   const excluded=validation.filter(p=>!p.saturdays);
   if(c.rotation!=='none'&&excluded.length)add('warning',`${excluded.length} pessoas não trabalham em sábados neste período. Confira a frequência e quem participa do rodízio.`);
   if(manual)add('warning','A grade informada foi revalidada. Os regimes antes/depois são a referência planejada; os dias da grade são a fonte dos totais.');
-  return{dates,rows,coverage,validation,issues,transitions,valid:!issues.some(i=>i.severity==='error'),statistics:{days:dates.length,people:c.members.length,hours:validation.reduce((sum,p)=>sum+p.hours,0),minimumSaturdays:minSat,maximumSaturdays:maxSat}};
+  return{dates,rows,shifts,coverage,validation,issues,transitions,valid:!issues.some(i=>i.severity==='error'),statistics:{days:dates.length,people:c.members.length,hours:validation.reduce((sum,p)=>sum+p.hours,0),minimumSaturdays:minSat,maximumSaturdays:maxSat}};
 }

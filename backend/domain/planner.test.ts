@@ -5,6 +5,24 @@ import {createPlannerExample,plannerConfigSchema} from '../../shared/planner';
 import {planPeriod,plannerTeamHours} from './planner';
 import {createPlannerReport} from '../services/planner-report';
 
+test('folguista cobre horários de turmas diferentes e a cobertura e horas seguem a atribuição',async()=>{
+ const config=createPlannerExample();config.start='2027-02-01';config.end='2027-02-02';config.rotation='none';config.expectedPeople=4;config.balanceSaturdays=false;
+ config.minimum=[3,3,0,0,0,0,0];config.desired=[...config.minimum];
+ config.teams=config.teams.map((t,i)=>({...t,start:['08:00','09:00','10:00'][i],breakStart:'12:00',breakEnd:'13:00',end:['16:00','18:00','18:00'][i],minimum:[1,1,0,0,0,0,0]}));
+ config.teams.push({...config.teams[0],id:'f',name:'Folguistas',minimum:Array(7).fill(0),coverTeamIds:['t1','t2','t3']});
+ config.members=['t1','t2','t3','f'].map((teamId,i)=>({id:`p${i}`,name:`Pessoa ${i}`,teamId,initialModel:'auto',rotates:false,previousDays:[]}));
+ const rows={p0:[false,true],p1:[true,false],p2:[true,true],p3:[true,true]};
+ const result=planPeriod({config,rows});assert.equal(result.valid,true,JSON.stringify(result.issues));
+ assert.deepEqual(result.shifts.p3,['t1','t2']);assert.deepEqual(result.coverage.map(d=>[d.teams.t1,d.teams.t2,d.teams.t3]),[[1,1,1],[1,1,1]]);
+ assert.equal(result.validation.find(p=>p.id==='p3')!.hours,15*60);
+ const book=new ExcelJS.Workbook();await book.xlsx.load(await createPlannerReport({config,rows},'xlsx') as unknown as ExcelJS.Buffer);
+ assert.match(String(book.getWorksheet('Escala')!.getCell('E8').value),/Turma 1/);assert.match(String(book.getWorksheet('Escala')!.getCell('F8').value),/Turma 2/);
+ assert.match(book.getWorksheet('Cobertura')!.getCell('F2').formula!,/COUNTIF/);
+ const short={...rows,p1:[false,false]};const shortage=planPeriod({config,rows:short});
+ assert.equal(shortage.valid,false);assert.equal(Object.values(shortage.coverage[0].teams).reduce((a,b)=>a+b,0),shortage.coverage[0].present);
+ assert.ok(shortage.issues.some(issue=>issue.message.includes('referência de 1')));
+});
+
 test('distribuição automática valida domingos alternados e alterações manuais',()=>{
   const config=createPlannerExample();config.start='2027-02-01';config.end='2027-02-28';config.distribution='automatic';config.automaticGroups=5;config.sundayRule='alternate';config.rotation='none';config.minimum=Array(7).fill(0);config.desired=Array(7).fill(8);config.teams.forEach(t=>t.minimum=Array(7).fill(0));
   const result=planPeriod({config});

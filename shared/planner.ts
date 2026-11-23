@@ -43,6 +43,7 @@ export const plannerConfigSchema = z.object({
     end: time,
     reducedNight: z.boolean(),
     minimum: coverage,
+    coverTeamIds: z.array(z.string()).max(12).optional(),
   })).min(1).max(12),
   members: z.array(z.object({
     id: z.string().min(1),
@@ -59,6 +60,7 @@ export const plannerConfigSchema = z.object({
   if (new Set(value.teams.map(p => p.id)).size !== value.teams.length) ctx.addIssue({code:'custom', message:'Existem turmas duplicadas.'});
   if (new Set(value.teams.map(p => p.name.trim().toLocaleLowerCase())).size !== value.teams.length) ctx.addIssue({code:'custom', message:'Use nomes diferentes para cada turma.'});
   if (value.members.some(p => !value.teams.some(t => t.id === p.teamId))) ctx.addIssue({code:'custom', message:'Associe todos os colaboradores a uma turma existente.'});
+  if (value.teams.some(t => (t.coverTeamIds??[]).some(id => id===t.id || !value.teams.some(other=>other.id===id)))) ctx.addIssue({code:'custom', message:'Confira as turmas selecionadas para cobertura.'});
 });
 
 export type PlannerConfig = z.infer<typeof plannerConfigSchema>;
@@ -79,6 +81,7 @@ export interface PlannerValidation {
 export interface PlannerResult {
   dates:{iso:string;day:number;weekday:number}[];
   rows:Record<string,boolean[]>;
+  shifts:Record<string,(string|null)[]>;
   coverage:{date:string;weekday:number;present:number;minimum:number;desired:number;teams:Record<string,number>;valid:boolean}[];
   validation:PlannerValidation[];
   issues:PlannerIssue[];

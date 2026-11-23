@@ -12,3 +12,5 @@
 
 
 .planner-auto-options{display:flex;flex-wrap:wrap;gap:14px;flex-basis:100%;align-items:end}.planner-auto-options label{min-width:190px;flex:1}.planner-auto-options select,.planner-auto-options input{width:100%;background:#081c27;border:1px solid #284653;border-radius:6px;padding:10px;color:#a7c7d2;font-size:12px}.planner-auto-options .planner-rest-help{flex-basis:100%}
+
+.planner-cover-options{border:1px solid #294955;border-radius:7px;margin:14px 0 0;padding:12px;display:flex;flex-wrap:wrap;gap:10px}.planner-cover-options legend{color:#9fc5ce;font-size:10px}.planner-cover-options small{flex-basis:100%;color:#7fa5b5;line-height:1.6}.planner-cover-options .planner-check{min-width:140px}

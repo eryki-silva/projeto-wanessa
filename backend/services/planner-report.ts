@@ -8,6 +8,8 @@ const excelText=(value:string)=>'"'+value.replace(/"/g,'""')+'"';
 
 export async function createPlannerReport(draft:PlannerDraft,format:'xlsx'|'csv') {
   const result=planPeriod(draft),c=draft.config;
+  const flexible=c.teams.some(t=>(t.coverTeamIds??[]).length>0);
+  const label=(team:typeof c.teams[number])=>`${team.name} · ${team.start}–${team.end}`;
   if(!result.valid)throw Error('A escala tem conflitos obrigatórios. Corrija-os antes de exportar.');
   const book=new ExcelJS.Workbook();book.creator='Compasso';book.calcProperties.fullCalcOnLoad=true;
   const schedule=book.addWorksheet('Escala'),coverage=book.addWorksheet('Cobertura'),validation=book.addWorksheet('Validação 5x2'),transition=book.addWorksheet('Transição');
@@ -21,16 +23,16 @@ export async function createPlannerReport(draft:PlannerDraft,format:'xlsx'|'csv'
   const colors={blue:'FFDCEBFC',green:'FFDFEFE6',amber:'FFFFF0CE',purple:'FFEDE2FA'};
   result.validation.forEach((person,index)=>{
     const row=index+5,team=c.teams.find(t=>t.id===person.teamId)!,hours=plannerTeamHours(team).calculated;
-    const values=[person.name,team.name,person.before,person.after,...result.rows[person.id].map(v=>v?`${team.start}–${team.end}`:'FOLGA')];
+    const values=[person.name,team.name,person.before,person.after,...result.rows[person.id].map((v,i)=>{const actual=c.teams.find(t=>t.id===result.shifts[person.id][i])??team;return v?(flexible?label(actual):`${actual.start}–${actual.end}`):'FOLGA';})];
     schedule.addRow(values);
     result.dates.forEach((d,i)=>{
-      const cell=schedule.getCell(row,i+5),working=result.rows[person.id][i];
-      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:working?colors[team.color]:'FFFFE5EB'}};
+      const cell=schedule.getCell(row,i+5),working=result.rows[person.id][i],actual=c.teams.find(t=>t.id===result.shifts[person.id][i])??team;
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:working?colors[actual.color]:'FFFFE5EB'}};
       cell.font={size:10,color:{argb:working?'FF294455':'FFAC405D'}};
       cell.alignment={horizontal:'center',vertical:'middle'};
-      if(working)cell.note=`Intervalo: ${team.breakStart}–${team.breakEnd}. Horas calculadas por dia: ${duration(hours)}. Para alterar a jornada de toda a pessoa, ajuste Horas/dia na aba Validação 5x2.`;
+      if(working)cell.note=`Intervalo: ${actual.breakStart}–${actual.breakEnd}. Horas calculadas: ${duration(plannerTeamHours(actual).calculated)}.`;
     });
-    schedule.getCell(`${totalColumn}${row}`).value={formula:`COUNTIF(E${row}:${lastDateColumn}${row},"<>FOLGA")*'Validação 5x2'!I${index+2}`,result:fraction(person.hours)};
+    schedule.getCell(`${totalColumn}${row}`).value={formula:flexible?c.teams.map(t=>`COUNTIF(E${row}:${lastDateColumn}${row},${excelText(label(t))})*${fraction(plannerTeamHours(t).calculated)}`).join('+'):`COUNTIF(E${row}:${lastDateColumn}${row},"<>FOLGA")*'Validação 5x2'!I${index+2}`,result:fraction(person.hours)};
     schedule.getCell(`${totalColumn}${row}`).numFmt='[h]:mm';
   });
   schedule.columns.forEach((col,i)=>col.width=i===0?25:i<4?23:18);
@@ -47,7 +49,7 @@ export async function createPlannerReport(draft:PlannerDraft,format:'xlsx'|'csv'
     coverage.addRow([new Date(`${d.date}T00:00:00Z`),plannerWeekdays[d.weekday],null,d.minimum,d.desired,...c.teams.map(t=>d.teams[t.id]),d.valid?'OK':'ERRO']);
     coverage.getCell(`A${row}`).numFmt='dd/mm/yyyy';
     coverage.getCell(`C${row}`).value={formula:`COUNTIF(Escala!${column}${start}:${column}${end},"<>FOLGA")`,result:d.present};
-    c.teams.forEach((team,j)=>coverage.getCell(row,j+6).value={formula:`COUNTIFS(Escala!$B$${start}:$B$${end},${excelText(team.name)},Escala!${column}${start}:${column}${end},"<>FOLGA")`,result:d.teams[team.id]});
+    c.teams.forEach((team,j)=>coverage.getCell(row,j+6).value={formula:flexible?`COUNTIF(Escala!${column}${start}:${column}${end},${excelText(label(team))})`:`COUNTIFS(Escala!$B$${start}:$B$${end},${excelText(team.name)},Escala!${column}${start}:${column}${end},"<>FOLGA")`,result:d.teams[team.id]});
     const totalCheck=`C${row}>=D${row}`;
     const checks=c.teamCoverage==='required'?c.teams.map((t,j)=>`${coverage.getColumn(j+6).letter}${row}>=${t.minimum[d.weekday]}`):[];
     const fixedRest=c.distribution==='fixed'&&c.allowedModels.every(model=>c.restDays[model].includes(d.weekday));
@@ -81,7 +83,7 @@ export async function createPlannerReport(draft:PlannerDraft,format:'xlsx'|'csv'
       validation.getColumn(col).hidden=true;validWeekCells.push(address);
       const first=schedule.getColumn(5+indexes[0]).letter,last=schedule.getColumn(5+indexes.at(-1)!).letter;
       const count=`COUNTIF(Escala!${first}${source}:${last}${source},"<>FOLGA")`;
-      let expression=`${count}*$I${row}<=${c.targetHours}/24`;
+      let expression=flexible?`${c.teams.map(t=>`COUNTIF(Escala!${first}${source}:${last}${source},${excelText(label(t))})*${fraction(plannerTeamHours(t).calculated)}`).join('+')}<=${c.targetHours}/24`:`${count}*$I${row}<=${c.targetHours}/24`;
       const fixedRest=indexes.filter(i=>c.distribution==='fixed'&&c.allowedModels.every(model=>c.restDays[model].includes(result.dates[i].weekday)));
       if(fixedRest.length)expression=`AND(${expression},${fixedRest.map(i=>`Escala!${schedule.getColumn(5+i).letter}${source}="FOLGA"`).join(',')})`;
       if(indexes.length===7){
@@ -102,7 +104,7 @@ export async function createPlannerReport(draft:PlannerDraft,format:'xlsx'|'csv'
   validation.columns.forEach((col,i)=>{if(i<10)col.width=i===0?25:i<4?24:19;});
   validation.views=[{state:'frozen',ySplit:1}];
   const noteRow=result.validation.length+4;
-  validation.mergeCells(noteRow,1,noteRow,10);validation.getCell(noteRow,1).value='Resultado 5x2 valida a sequência e as semanas. Confira também a aba Cobertura. Horas/dia são editáveis; mudar apenas o texto de um horário na grade não recalcula a jornada diária.';validation.getCell(noteRow,1).alignment={wrapText:true};validation.getRow(noteRow).height=36;
+  validation.mergeCells(noteRow,1,noteRow,10);validation.getCell(noteRow,1).value=flexible?'Os horários indicam a turma efetivamente coberta. Os totais usam os horários configurados; edite a escala no aplicativo para recalcular as atribuições. Confira a cobertura e o descanso entre jornadas.':'Resultado 5x2 valida a sequência e as semanas. Confira também a aba Cobertura. Horas/dia são editáveis; mudar apenas o texto de um horário na grade não recalcula a jornada diária.';validation.getCell(noteRow,1).alignment={wrapText:true};validation.getRow(noteRow).height=36;
   result.issues.forEach((issue,i)=>{validation.getCell(noteRow+i+2,1).value=issue.severity==='error'?'ERRO':'OBSERVAÇÃO';validation.mergeCells(noteRow+i+2,2,noteRow+i+2,10);validation.getCell(noteRow+i+2,2).value=issue.message;validation.getCell(noteRow+i+2,2).alignment={wrapText:true};validation.getRow(noteRow+i+2).height=30;});
 
   transition.addRow(['Troca','Colaborador','Turma','Regime anterior','Regime posterior',...Array.from({length:15},(_,i)=>`${i-7>=0?'+':''}${i-7} dias`)]);
@@ -110,7 +112,7 @@ export async function createPlannerReport(draft:PlannerDraft,format:'xlsx'|'csv'
     const team=c.teams.find(t=>t.id===p.teamId)!;
     transition.addRow([change.date,p.name,team.name,change.before[p.id],change.after[p.id],...Array.from({length:15},(_,i)=>{
       const value=new Date(Date.parse(`${change.date}T00:00:00Z`)+(i-7)*86400000).toISOString().slice(0,10),index=result.dates.findIndex(d=>d.iso===value);
-      return index<0?'Fora do período':result.rows[p.id][index]?`${team.start}–${team.end}`:'FOLGA';
+      const actual=c.teams.find(t=>t.id===result.shifts[p.id][index])??team;return index<0?'Fora do período':result.rows[p.id][index]?(flexible?label(actual):`${actual.start}–${actual.end}`):'FOLGA';
     })]);
   }
   if(!result.transitions.length)transition.addRow(['Sem trocas de grupo dentro do período selecionado.']);
